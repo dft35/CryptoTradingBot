@@ -1,0 +1,103 @@
+import alpaca_trade_api as tradeapi
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import time
+import random
+
+# Alpaca API credentials
+API_KEY = 'ALPACA KEY FILL THIS IN PLEASE'
+API_SECRET = 'SECRET KEY FILL THIS IN PLEASE'
+BASE_URL = 'https://paper-api.alpaca.markets'
+
+# Initialize Alpaca API
+api = tradeapi.REST(API_KEY, API_SECRET, base_url=BASE_URL, api_version='v2')
+
+def get_historical_data(symbol, timeframe='5Min', limit=100):
+    try:
+        bars = api.get_crypto_bars(symbol, timeframe, limit=limit).df
+        return bars
+    except Exception as e:
+        print(f"Error fetching data for {symbol}: {e}")
+        return pd.DataFrame()
+
+def execute_trade(symbol, qty, side):
+    try:
+        order = api.submit_order(
+            symbol=symbol,
+            qty=qty,
+            side=side,
+            type='market',
+            time_in_force='gtc'
+        )
+        print(f"Order placed: {side} {qty} of {symbol}")
+        return order
+    except Exception as e:
+        print(f"Error placing order for {symbol}: {e}")
+        return None
+
+# Strategy functions remain the same as in the previous version
+# ... (include all strategy functions here)
+
+def explain_trade(symbol, side, qty, reasons):
+    explanation = f"I'm going to {side} {qty} of {symbol} because:\n"
+    for strategy, signal in reasons.items():
+        if signal != 0:
+            explanation += f"- The {strategy} strategy says to "
+            explanation += "buy" if signal > 0 else "sell"
+            explanation += ".\n"
+    return explanation
+
+def run_bot():
+    cryptos = ['BTCUSD', 'ETHUSD', 'LTCUSD', 'BCHUSD', 'LINKUSD']
+    strategies = {
+        'Moving Average': sma_strategy,
+        'RSI': rsi_strategy,
+        'Bollinger Bands': bollinger_bands_strategy,
+        'MACD': macd_strategy,
+        'Stochastic Oscillator': stochastic_oscillator_strategy,
+        'VWAP': vwap_strategy,
+        'Momentum': momentum_strategy,
+        'Fibonacci': fibonacci_strategy,
+        'Ichimoku Cloud': ichimoku_strategy,
+        'Mean Reversion': mean_reversion_strategy
+    }
+    
+    while True:
+        for crypto in cryptos:
+            data = get_historical_data(crypto)
+            if not data.empty:
+                signals = {name: strategy(data) for name, strategy in strategies.items()}
+                overall_signal = sum(signals.values())
+                
+                # Determine trade size based on overall signal strength
+                base_qty = 1000  # Base quantity in USD
+                qty = abs(overall_signal) * base_qty / len(strategies)
+                qty = max(10, min(10000, qty))  # Limit quantity between $10 and $10,000
+                
+                if overall_signal > 0:
+                    explanation = explain_trade(crypto, "buy", qty, signals)
+                    print(explanation)
+                    execute_trade(crypto, qty, 'buy')
+                elif overall_signal < 0:
+                    explanation = explain_trade(crypto, "sell", qty, signals)
+                    print(explanation)
+                    execute_trade(crypto, qty, 'sell')
+                else:
+                    print(f"All strategies are neutral for {crypto}. Let's make a small random trade to keep things interesting!")
+                    side = random.choice(['buy', 'sell'])
+                    execute_trade(crypto, 10, side)
+            
+            else:
+                print(f"No data available for {crypto}, making a random trade to stay active.")
+                side = random.choice(['buy', 'sell'])
+                execute_trade(crypto, 10, side)
+            
+            # Print a separator for readability
+            print("\n" + "="*50 + "\n")
+        
+        print("Waiting for 5 minutes before the next round of trades...\n")
+        time.sleep(300)  # Wait for 5 minutes before next iteration
+
+if __name__ == "__main__":
+    run_bot()
